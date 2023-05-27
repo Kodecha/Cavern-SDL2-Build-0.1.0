@@ -1,4 +1,6 @@
-
+/*
+This game is a game where the player (a triangle stand in shape) flys around 
+*/
 #include <iostream>
 #include <fstream>
 #include <math.h>
@@ -29,11 +31,7 @@ const int MAX_ITEMS = 100;
 
 //TileSet variables
 SDL_Texture* tilesetTexture;
-SDL_Texture* vignette;
 SDL_Texture* playerTexture;
-SDL_Texture* mobTexture;
-SDL_Texture* fontTexture;
-TTF_Font* font;
 
 //Game variables
 SDL_Window* window;
@@ -42,3 +40,6 @@ SDL_Renderer* renderer;
 //Game objects
 Player* player;
 Game* game;
+
+
+
