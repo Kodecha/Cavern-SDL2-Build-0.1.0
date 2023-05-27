@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>
-#include <math.h>
+#include <cmath>
 #include <string>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
@@ -28,75 +28,94 @@ public:
     Player();
     ~Player();
     void drawPlayer();
-    void movePlayer();
+    void movePlayer(float deltaTime);
     void playerStats();
-    void setX(int x);
-    void setY(int y);
-    void setD(int d);
-    void setSpeed(int s);
-    void setMomentum(int m);
-    int getX();
-    int getY();
-    int getD();
-    int getSpeed();
-    int getMomentum();
+    void setX(float x);
+    void setY(float y);
+    void setRotation(float rotation);
+    void setSpeed(float s);
+    float getX();
+    float getY();
+    float getRotation();
+    float getSpeed();
+    bool isMoving();
 
 private:
-    int X;
-    int Y;
-    int D;
-    int speed;
-    int momentum;
-    int weight;
+    float X;
+    float Y;
+    float rotation;
+    float speed;
+    bool isMovingForward;
 };
 
 Player::Player() {
-    X = 10;
-    Y = 10;
-    D = 0;
-    speed = 2;
-    momentum = 0;
-    weight = 1;
+    X = 11.0f;
+    Y = 11.0f;
+    rotation = 0.0f;
+    speed = 50.0f;  // Adjust the speed as needed
+    isMovingForward = false;
 }
 
 Player::~Player() {}
 
 void Player::drawPlayer() {}
 
-void Player::movePlayer() {}
+void Player::movePlayer(float deltaTime) {
+    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    if (keys[SDL_SCANCODE_A]) {
+        rotation -= speed * deltaTime;
+    }
+    if (keys[SDL_SCANCODE_D]) {
+        rotation += speed * deltaTime;
+    }
+    if (keys[SDL_SCANCODE_SPACE]) {
+        isMovingForward = true;
+    } else {
+        isMovingForward = false;
+    }
+
+    if (isMovingForward) {
+        X += cos(rotation) * speed * deltaTime;
+        Y += sin(rotation) * speed * deltaTime;
+    }
+}
 
 void Player::playerStats() {}
 
-void Player::setX(int x) {
+void Player::setX(float x) {
     X = x;
 }
 
-int Player::getX() {
+float Player::getX() {
     return X;
 }
 
-void Player::setY(int y) {
+void Player::setY(float y) {
     Y = y;
 }
 
-int Player::getY() {
+float Player::getY() {
     return Y;
 }
 
-void Player::setD(int d) {
-    D = d;
+void Player::setRotation(float r) {
+    rotation = r;
 }
 
-int Player::getD() {
-    return D;
+float Player::getRotation() {
+    return rotation;
 }
 
-void Player::setSpeed(int s) {
+void Player::setSpeed(float s) {
     speed = s;
 }
 
-int Player::getSpeed() {
+float Player::getSpeed() {
     return speed;
+}
+
+bool Player::isMoving() {
+    return isMovingForward;
 }
 
 class Game {
@@ -138,12 +157,14 @@ Game::Game() {
 
     // Create texture from the surface
     tilesetTexture = SDL_CreateTextureFromSurface(renderer, tilesetSurface);
+    SDL_FreeSurface(tilesetSurface);
 
     // Load the player image to a surface
     SDL_Surface* playerSurface = IMG_Load("assets/player.png");
 
     // Create player texture from the surface
     playerTexture = SDL_CreateTextureFromSurface(renderer, playerSurface);
+    SDL_FreeSurface(playerSurface);
 
     // Load the map from a text file
     std::ifstream mapFile("map.txt");
@@ -153,6 +174,7 @@ Game::Game() {
                 mapFile >> map[x][y];
             }
         }
+        mapFile.close();
     }
     // Initialize game variables
     gameRunning = true;
@@ -170,39 +192,38 @@ Game::~Game() {
 
 void Game::run() {
     SDL_Event event;
+    Uint32 lastTime = SDL_GetTicks();
     while (gameRunning) {
-// check which keys are down each frame
-        const Uint8* keys = SDL_GetKeyboardState(NULL);
-        if (keys[SDL_SCANCODE_W]) {
-            player.setY(player.getY() - player.getSpeed());
-        }
-        if (keys[SDL_SCANCODE_S]) {
-            player.setY(player.getY() + player.getSpeed());
-        }
-        if (keys[SDL_SCANCODE_A]) {
-            player.setX(player.getX() - player.getSpeed());
-        }
-        if (keys[SDL_SCANCODE_D]) {
-            player.setX(player.getX() + player.getSpeed());
-        }
-        if (keys[SDL_SCANCODE_Q]) {
-            player.setD(player.getD() - 1);
-        }
-        if (keys[SDL_SCANCODE_E]) {
-            player.setD(player.getD() + 1);
-        }
-        if (keys[SDL_SCANCODE_LSHIFT]) {
-            player.setSpeed(4);
-        } else {
-            player.setSpeed(2);
-        }
-        if (keys[SDL_SCANCODE_ESCAPE]) {
-            gameRunning = false;
-        }
+        Uint32 currentTime = SDL_GetTicks();
+        float deltaTime = (currentTime - lastTime) / 1000.0f;
+        lastTime = currentTime;
 
         // Handle events
         while (SDL_PollEvent(&event)) {
             inputHandle(event);
+            if (event.type == SDL_QUIT) {
+                gameRunning = false;
+            }
+        }
+
+        // Move the player
+        player.movePlayer(deltaTime);
+
+        // Handle collisions with walls
+        int playerTileX = static_cast<int>(player.getX() / TILE_SIZE);
+        int playerTileY = static_cast<int>(player.getY() / TILE_SIZE);
+        if (map[playerTileX][playerTileY] == '#') {
+            // Calculate the reflection angle
+            float wallAngle = atan2(playerTileY * TILE_SIZE - player.getY(), playerTileX * TILE_SIZE - player.getX());
+            float reflectionAngle = 2 * wallAngle - player.getRotation();
+
+            // Reflect the player's rotation
+            player.setRotation(reflectionAngle);
+
+            // Move the player away from the wall
+            float moveDist = 1.0f;
+            player.setX(player.getX() + cos(reflectionAngle) * moveDist);
+            player.setY(player.getY() + sin(reflectionAngle) * moveDist);
         }
 
         // Draw the game
@@ -217,92 +238,82 @@ void Game::drawGame() {
 
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
-            int screenX = x * TILE_SIZE - player.getX() * TILE_SIZE + MAX_DISPLAY_WIDTH / 2;
-            int screenY = y * TILE_SIZE - player.getY() * TILE_SIZE + MAP_DISPLAY_HEIGHT / 2;
+            int screenX = x * TILE_SIZE - static_cast<int>(player.getX()) + MAX_DISPLAY_WIDTH / 2;
+            int screenY = y * TILE_SIZE - static_cast<int>(player.getY()) + MAP_DISPLAY_HEIGHT / 2;
             bool visible = true;
             for (int i = 0; i < FOV; i++) {
-                int rayX = player.getX() + (x - player.getX()) * i / FOV;
-                int rayY = player.getY() + (y - player.getY()) * i / FOV;
-                if (map[rayX][rayY] == '#') {
+                float rayX = player.getX() + (x - player.getX() / TILE_SIZE) * i / FOV;
+                float rayY = player.getY() + (y - player.getY() / TILE_SIZE) * i / FOV;
+                if (map[static_cast<int>(rayX / TILE_SIZE)][static_cast<int>(rayY / TILE_SIZE)] == '#') {
                     visible = false;
+                    break;
                 }
             }
 
-            if (visible && sqrt(pow(x - player.getX(), 2) + pow(y - player.getY(), 2)) < FOV) {
+            if (visible) {
                 SDL_Rect tilesetRect = {0, 0, TILE_SIZE, TILE_SIZE};
                 if (map[x][y] == '#') {
                     tilesetRect.x = 0;
                     tilesetRect.y = 0;
-                } else if (map[x][y] == '.') {
-                    tilesetRect.x = TILE_SIZE;
-                    tilesetRect.y = 0;
-                } else if (map[x][y] == 'X') {
-                    tilesetRect.x = TILE_SIZE * 2;
-                    tilesetRect.y = 0;
-                } else if (map[x][y] == ',') {
-                    tilesetRect.x = TILE_SIZE * 3;
+                } else {
+                    tilesetRect.x = 32;
                     tilesetRect.y = 0;
                 }
 
-                SDL_Rect tileRect = {screenX, screenY, TILE_SIZE, TILE_SIZE};
-                SDL_RenderCopy(renderer, tilesetTexture, &tilesetRect, &tileRect);
+                SDL_Rect dstRect = {screenX, screenY, TILE_SIZE, TILE_SIZE};
+                SDL_RenderCopy(renderer, tilesetTexture, &tilesetRect, &dstRect);
             }
         }
     }
 
-    SDL_Rect playerRect = {MAX_DISPLAY_WIDTH / 2, MAP_DISPLAY_HEIGHT / 2, TILE_SIZE, TILE_SIZE};
-    SDL_RenderCopy(renderer, playerTexture, nullptr, &playerRect);
+    // Draw the player
+    SDL_Rect playerRect = {0, 0, TILE_SIZE, TILE_SIZE};
+    playerRect.x = MAX_DISPLAY_WIDTH / 2 - TILE_SIZE / 2;
+    playerRect.y = MAP_DISPLAY_HEIGHT / 2 - TILE_SIZE / 2;
+    SDL_RenderCopyEx(renderer, playerTexture, NULL, &playerRect, player.getRotation() * 180 / M_PI, NULL, SDL_FLIP_NONE);
+
+    // Draw player stats X Y Direction and isMoving
+    std::string playerStats = "X: " + std::to_string(player.getX()) + " Y: " + std::to_string(player.getY()) + " Direction: " + std::to_string(player.getRotation()) + " isMoving: " + std::to_string(player.isMoving());
+    SDL_Color white = {255, 255, 255};
+    SDL_Color black = {0, 0, 0};
+    SDL_Surface* playerStatsSurface = TTF_RenderText_Blended(font, playerStats.c_str(), white);
+    SDL_Texture* playerStatsTexture = SDL_CreateTextureFromSurface(renderer, playerStatsSurface);
+    SDL_Rect playerStatsRect = {0, 0, playerStatsSurface->w, playerStatsSurface->h};
+    SDL_Rect playerStatsOutlineRect = {0, 0, playerStatsSurface->w + 2, playerStatsSurface->h + 2};
+    playerStatsRect.x = 10;
+    playerStatsRect.y = 10;
+    playerStatsOutlineRect.x = 10;
+    playerStatsOutlineRect.y = 10;
+    SDL_SetRenderDrawColor(renderer, black.r, black.g, black.b, 255);
+    SDL_RenderFillRect(renderer, &playerStatsOutlineRect);
+    SDL_SetRenderDrawColor(renderer, white.r, white.g, white.b, 255);
+    SDL_RenderFillRect(renderer, &playerStatsRect);
+    SDL_RenderCopy(renderer, playerStatsTexture, NULL, &playerStatsRect);
+    SDL_FreeSurface(playerStatsSurface);
+    SDL_DestroyTexture(playerStatsTexture);
 }
 
 void Game::inputHandle(SDL_Event& event) {
-    switch (event.key.keysym.sym) {
-        case SDLK_w:
-            // Update direction angle for upward movement   
-            player.setD(0);
-            break;
-        case SDLK_a:
-            // Update direction angle for left movement
-            player.setD(1);
-        case SDLK_s:
-            // Update direction angle for downward movement
-            player.setD(2);
-            break;
-        case SDLK_d:
-            // Update direction angle for right movement
-            player.setD(3);
-            break;
-        default:
-            break;
-        
-        case SDLK_SPACE:
-            // Update player x and y based on direction
-            if (player.getD() == 0) {
-                if (map[player.getX()][player.getY() - 1] != '#') {
-                    player.setY(player.getY() - 1);
-                }
-            } else if (player.getD() == 1) {
-                if (map[player.getX() - 1][player.getY()] != '#') {
-                    player.setX(player.getX() - 1);
-                }
-            } else if (player.getD() == 2) {
-                if (map[player.getX()][player.getY() + 1] != '#') {
-                    player.setY(player.getY() + 1);
-                }
-            } else if (player.getD() == 3) {
-                if (map[player.getX() + 1][player.getY()] != '#') {
-                    player.setX(player.getX() + 1);
-                }
-            }
+    if (event.type == SDL_KEYDOWN) {
+        if (event.key.keysym.sym == SDLK_ESCAPE) {
+            gameRunning = false;
+        }
+    } else if (event.type == SDL_KEYUP) {
+        if (event.key.keysym.sym == SDLK_SPACE) {
+            // Stop the player
+            player.setSpeed(0.0f);
+        }
     }
 }
 
 void Game::gameReset() {
-    player.setX(2);
-    player.setY(2);
+    // Reset the game state to the initial state
+    // ...
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char** argv) {
     Game game;
     game.run();
+
     return 0;
 }
